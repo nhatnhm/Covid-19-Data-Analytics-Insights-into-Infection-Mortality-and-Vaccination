@@ -6,27 +6,32 @@ IF OBJECT_ID('DeathByContinent', 'V') IS NOT NULL
 GO
 
 CREATE VIEW DeathByContinent AS
-WITH ByContinentAndLocation AS
+WITH ByContinentAndLocation (continent, location, total_deaths, total_cases, population, deaths_percent) AS
 (
     SELECT 
         continent,
         location,
         MAX(total_deaths) AS total_deaths, 
-        MAX(total_cases) AS total_case, 
+        MAX(total_cases) AS total_cases, 
         MAX(population) AS population,
         CAST(MAX(total_deaths) AS REAL) / CAST(MAX(total_cases) AS REAL) * 100 AS deaths_percent
-    FROM PortfolioProject..CovidDeaths
-    WHERE continent IS NOT NULL
-    GROUP BY continent, location
+    FROM 
+        PortfolioProject..CovidDeaths
+    WHERE 
+        continent IS NOT NULL
+    GROUP BY 
+        continent, location
 )
 SELECT 
     continent AS Continent,
     SUM(total_deaths) AS Total_deaths, 
-    SUM(total_case) AS Total_case, 
+    SUM(total_cases) AS Total_cases, 
     SUM(population) AS Population,
-    CAST(SUM(total_deaths) AS REAL) / CAST(SUM(total_case) AS REAL) * 100 AS Deaths_percent	
-FROM ByContinentAndLocation
-GROUP BY continent
+    CAST(SUM(total_deaths) AS REAL) / CAST(SUM(total_cases) AS REAL) * 100 AS Deaths_percent	
+FROM 
+    ByContinentAndLocation
+GROUP BY 
+    continent;
 GO
 
 -- View Global_Numbers
@@ -41,8 +46,10 @@ SELECT
     MAX(population) AS Population,
     CAST(MAX(total_cases) AS REAL) / CAST(MAX(population) AS REAL) * 100 AS Cases_percent,
     CAST(MAX(total_deaths) AS REAL) / CAST(MAX(total_cases) AS REAL) * 100 AS Deaths_percent
-FROM PortfolioProject..CovidDeaths
-WHERE location = 'World'
+FROM 
+	PortfolioProject..CovidDeaths
+WHERE 
+	location = 'World'
 GO
 
 -- View InfectionByLocation
@@ -71,8 +78,10 @@ SELECT
         WHEN total_cases IS NULL THEN 0
         ELSE SUM(total_cases) OVER (PARTITION BY date)
     END AS Global_Total_Cases
-FROM PortfolioProject..CovidDeaths
-WHERE continent IS NOT NULL
+FROM 
+	PortfolioProject..CovidDeaths
+WHERE 
+	continent IS NOT NULL
 GO
 
 -- View InfectionByContinent
@@ -84,39 +93,58 @@ CREATE VIEW InfectionByContinent AS
 SELECT 
     continent,
     date,
+
+    -- Replace NULL with 0 for total deaths
     CASE
         WHEN total_deaths_continent IS NULL THEN 0
         ELSE total_deaths_continent
     END AS Total_Deaths_Continent,
+    
+    -- Replace NULL with 0 for total cases
     CASE 
         WHEN total_cases_continent IS NULL THEN 0
         ELSE total_cases_continent
     END AS Total_Cases_Continent,
+    
+    -- Replace NULL with 0 for death percent
     CASE
         WHEN death_percent IS NULL THEN 0
         ELSE death_percent
     END AS Death_Percent,
+    
+    -- Replace NULL with 0 for high infection ratio
     CASE 
-        WHEN HightEfecttion IS NULL THEN 0
-        ELSE HightEfecttion
+        WHEN HighEfecttion IS NULL THEN 0
+        ELSE HighEfecttion
     END AS High_Infection
 FROM
 (
     SELECT DISTINCT
         C.continent,
         date,
+        
+        -- Calculate the cumulative sum of total deaths per continent
         SUM(C.total_deaths) OVER (PARTITION BY C.continent ORDER BY date) AS total_deaths_continent,
-        SUM(total_cases) OVER (PARTITION BY C.continent ORDER BY date) AS total_cases_continent,
+        
+        -- Calculate the cumulative sum of total cases per continent
+        SUM(C.total_cases) OVER (PARTITION BY C.continent ORDER BY date) AS total_cases_continent,
+        
+        -- Calculate the death percentage per continent
         SUM(CAST(C.total_deaths AS REAL)) OVER (PARTITION BY C.continent ORDER BY date) / 
-        SUM(total_cases) OVER (PARTITION BY C.continent ORDER BY date) AS death_percent,
-        SUM(total_cases) OVER (PARTITION BY C.continent ORDER BY date) / 
-        CAST(P.Population AS REAL) AS HightEfecttion
-    FROM PortfolioProject..CovidDeaths AS C
-    LEFT JOIN DeathByContinent AS P
-    ON C.continent = P.Continent
-    WHERE C.continent IS NOT NULL
+        SUM(C.total_cases) OVER (PARTITION BY C.continent ORDER BY date) AS death_percent,
+        
+        -- Calculate the high infection rate per continent
+        SUM(C.total_cases) OVER (PARTITION BY C.continent ORDER BY date) / 
+        CAST(P.Population AS REAL) AS HighEfecttion
+    FROM 
+        PortfolioProject..CovidDeaths AS C
+    LEFT JOIN 
+        DeathByContinent AS P ON C.continent = P.Continent
+    WHERE 
+        C.continent IS NOT NULL
 ) AS Null_InfectionByContinent;
 GO
+
 
 -- View PercentPopulationVaccinated
 IF OBJECT_ID('PercentPopulationVaccinated', 'V') IS NOT NULL
@@ -130,10 +158,14 @@ SELECT
     date,
     population,
     new_vaccinations,
+    
+    -- Replace NULL with 0 for rolling vaccinations
     CASE 
         WHEN rolling_vaccinations IS NULL THEN 0
         ELSE rolling_vaccinations
     END AS Rolling_Vaccinations,
+    
+    -- Replace NULL with 0 for percent vaccinated
     CASE 
         WHEN percent_vaccinated IS NULL THEN 0
         ELSE percent_vaccinated
@@ -145,17 +177,26 @@ FROM
         Death.location,
         Death.date,
         Death.population,
+        
+        -- Replace NULL with 0 for new vaccinations
         CASE
             WHEN Vacc.new_vaccinations IS NULL THEN 0
             ELSE Vacc.new_vaccinations
         END AS new_vaccinations,
+        
+        -- Calculate rolling vaccinations per location, ordered by date
         SUM(Vacc.new_vaccinations) OVER (PARTITION BY Death.location ORDER BY Death.date) AS rolling_vaccinations,
+        
+        -- Calculate percent vaccinated for each location by dividing rolling vaccinations by population
         SUM(Vacc.new_vaccinations) OVER (PARTITION BY Death.location ORDER BY Death.date) / CAST(Death.population AS REAL) AS percent_vaccinated
-    FROM PortfolioProject..CovidVaccinations AS Vacc
-    INNER JOIN PortfolioProject..CovidDeaths AS Death
+    FROM 
+        PortfolioProject..CovidVaccinations AS Vacc
+    INNER JOIN 
+        PortfolioProject..CovidDeaths AS Death 
         ON Vacc.location = Death.location 
         AND Vacc.date = Death.date
-    WHERE Vacc.continent IS NOT NULL
+    WHERE 
+        Vacc.continent IS NOT NULL
 ) AS Null_PercentPopulationVaccinated
-order by location, date
 GO
+
